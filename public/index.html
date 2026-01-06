@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Craft Skins | Pro Platform</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #000; color: #fff; overflow-x: hidden; }
+        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #000; } ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+        canvas { outline: none; touch-action: none; }
+        .glass-panel { background: rgba(9, 9, 11, 0.95); backdrop-filter: blur(10px); border: 1px solid #27272a; }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen bg-black text-white">
+
+    <!-- Header -->
+    <header class="p-6 border-b border-zinc-900 bg-zinc-950/80 backdrop-blur-md sticky top-0 z-40 flex justify-between items-center">
+        <h1 class="text-xl font-bold tracking-[0.2em] uppercase text-zinc-300">
+            Craft<span class="text-white">Skins</span>
+        </h1>
+        <div class="text-xs text-zinc-500 uppercase tracking-widest font-bold">Pro Hub</div>
+    </header>
+
+    <main class="flex-grow p-6 flex flex-col gap-12 max-w-6xl mx-auto w-full relative">
+        
+        <!-- Viewer Section -->
+        <section class="flex flex-col md:flex-row gap-8 items-center justify-center">
+            <!-- 3D Viewer -->
+            <div class="relative group">
+                <div class="absolute -inset-1 bg-gradient-to-br from-zinc-700 to-black rounded-xl blur opacity-30"></div>
+                <div class="relative bg-zinc-900 p-1 rounded-xl border border-zinc-800 shadow-2xl">
+                    <canvas id="skin_container" class="rounded-lg cursor-grab active:cursor-grabbing"></canvas>
+                </div>
+            </div>
+
+            <!-- Controls -->
+            <div class="w-full max-w-sm flex flex-col gap-4">
+                <h2 class="text-2xl font-bold">Skin Viewer</h2>
+                <p class="text-zinc-500 text-sm mb-4">Upload a file to view it in 3D or publish it to the gallery.</p>
+                
+                <div class="relative w-full group">
+                    <div class="w-full py-4 bg-white text-black border border-white rounded text-center text-sm font-bold uppercase transition hover:bg-zinc-200 cursor-pointer flex items-center justify-center gap-2">
+                        <span>📂 Select Skin File</span>
+                    </div>
+                    <input type="file" id="skin-upload" accept="image/png" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                </div>
+            </div>
+        </section>
+
+        <hr class="border-zinc-900">
+
+        <!-- Gallery Section -->
+        <section>
+            <h3 class="text-lg font-bold mb-6 flex items-center gap-2">
+                <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                Community Gallery
+            </h3>
+            <div id="gallery-grid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                <div class="col-span-full text-center text-zinc-600 py-10">Loading gallery...</div>
+            </div>
+        </section>
+    </main>
+
+    <!-- ================= MODALS ================= -->
+
+    <!-- Modal 1: Choice -->
+    <div id="modal-choice" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm hidden">
+        <div class="glass-panel p-8 rounded-xl max-w-md w-full text-center shadow-2xl">
+            <h3 class="text-xl font-bold mb-4">File Selected</h3>
+            <p class="text-zinc-400 text-sm mb-8">Do you want to publish this model to the community or just view it here locally?</p>
+            <div class="flex gap-4 justify-center">
+                <button id="btn-choice-view" class="px-6 py-3 border border-zinc-700 rounded hover:bg-zinc-800 transition text-sm uppercase">Just View</button>
+                <button id="btn-choice-publish" class="px-6 py-3 bg-white text-black font-bold rounded hover:bg-zinc-200 transition text-sm uppercase">Publish Model</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 2: Publish Details -->
+    <div id="modal-publish" class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md hidden">
+        <div class="glass-panel p-8 rounded-xl max-w-md w-full shadow-2xl">
+            <h3 class="text-xl font-bold mb-6 border-b border-zinc-800 pb-4">Publish Skin</h3>
+            
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs text-zinc-500 uppercase mb-2">Skin Name</label>
+                    <input type="text" id="inp-name" class="w-full bg-black border border-zinc-700 rounded p-3 focus:border-white outline-none text-sm" placeholder="e.g. Neon Warrior">
+                </div>
+                <div>
+                    <label class="block text-xs text-zinc-500 uppercase mb-2">Description</label>
+                    <textarea id="inp-desc" rows="3" class="w-full bg-black border border-zinc-700 rounded p-3 focus:border-white outline-none text-sm" placeholder="Short description..."></textarea>
+                </div>
+            </div>
+
+            <div class="flex gap-4 mt-8">
+                <button id="btn-publish-cancel" class="flex-1 py-3 border border-zinc-700 rounded hover:bg-zinc-800 transition text-sm text-zinc-400">Cancel</button>
+                <button id="btn-publish-confirm" class="flex-1 py-3 bg-white text-black font-bold rounded hover:bg-zinc-200 transition text-sm">Confirm & Upload</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Logic -->
+    <script type="module">
+        import { SkinViewer, WalkingAnimation } from "https://esm.sh/skinview3d";
+
+        const canvas = document.getElementById("skin_container");
+        let viewer;
+        let selectedFile = null;
+
+        // 1. Setup Viewer
+        try {
+            viewer = new SkinViewer({
+                canvas: canvas,
+                width: 300,
+                height: 400,
+                skin: "https://textures.minecraft.net/texture/1a4af718455d4aab528e7a61f86fa25e6a369d1768dcb13f7df319a713eb810b",
+                preserveDrawingBuffer: true // ✅ هذا هو الحل لمشكلة الصورة الفارغة
+            });
+            viewer.camera.position.x = 20;
+            viewer.zoom = 0.8;
+            viewer.animation = new WalkingAnimation();
+            viewer.autoRotate = true;
+        } catch (err) { console.error(err); }
+
+        // 2. Handle File Selection
+        document.getElementById('skin-upload').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            selectedFile = file;
+
+            const reader = new FileReader();
+            reader.onload = (evt) => {
+                if (viewer) {
+                    viewer.loadSkin(evt.target.result);
+                    document.getElementById('modal-choice').classList.remove('hidden');
+                }
+            };
+            reader.readAsDataURL(file);
+            e.target.value = '';
+        });
+
+        // 3. Modal Controls
+        document.getElementById('btn-choice-view').onclick = () => document.getElementById('modal-choice').classList.add('hidden');
+        document.getElementById('btn-choice-publish').onclick = () => {
+            document.getElementById('modal-choice').classList.add('hidden');
+            document.getElementById('modal-publish').classList.remove('hidden');
+            if(viewer) viewer.autoRotate = false; // إيقاف الدوران للحصول على لقطة ثابتة
+        };
+
+        document.getElementById('btn-publish-cancel').onclick = () => {
+            document.getElementById('modal-publish').classList.add('hidden');
+            selectedFile = null;
+            if(viewer) viewer.autoRotate = true;
+        };
+
+        // 4. Publish Logic (Snapshot Fix)
+        document.getElementById('btn-publish-confirm').onclick = async () => {
+            const btn = document.getElementById('btn-publish-confirm');
+            btn.innerText = "Processing...";
+            btn.disabled = true;
+
+            const name = document.getElementById('inp-name').value || "Unnamed";
+            const desc = document.getElementById('inp-desc').value || "";
+
+            // إجبار العارض على الرسم مرة أخيرة للتأكد من وجود الصورة
+            if(viewer) viewer.render();
+
+            // التقاط الصورة الآن
+            const screenshotDataUrl = viewer.canvas.toDataURL("image/png");
+            
+            const fetchRes = await fetch(screenshotDataUrl);
+            const blob = await fetchRes.blob();
+
+            const formData = new FormData();
+            formData.append('skin', selectedFile);
+            formData.append('preview', blob, "preview.png");
+            formData.append('name', name);
+            formData.append('description', desc);
+
+            try {
+                const res = await fetch('/api/upload', { method: 'POST', body: formData });
+                const data = await res.json();
+                
+                if (data.success) {
+                    document.getElementById('modal-publish').classList.add('hidden');
+                    loadGallery(); 
+                    document.getElementById('inp-name').value = '';
+                    document.getElementById('inp-desc').value = '';
+                }
+            } catch (err) {
+                alert("Upload failed!");
+            } finally {
+                btn.innerText = "Confirm & Upload";
+                btn.disabled = false;
+                if(viewer) viewer.autoRotate = true;
+            }
+        };
+
+        // 5. Gallery System with Download Button
+        async function loadGallery() {
+            const grid = document.getElementById('gallery-grid');
+            try {
+                const res = await fetch('/api/skins');
+                const skins = await res.json();
+                grid.innerHTML = '';
+
+                if (skins.length === 0) {
+                    grid.innerHTML = '<div class="col-span-full text-center text-zinc-600">No skins yet.</div>';
+                    return;
+                }
+
+                skins.forEach(skin => {
+                    const card = document.createElement('div');
+                    card.className = "bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden group hover:border-zinc-500 transition flex flex-col relative";
+                    
+                    const previewPath = `/uploads/${skin.previewFilename}`;
+                    const skinPath = `/uploads/${skin.skinFilename}`;
+
+                    card.innerHTML = `
+                        <!-- منطقة العرض: عند الضغط عليها يتم عرض السكن في الأعلى -->
+                        <div class="view-trigger cursor-pointer relative aspect-[3/4] bg-gradient-to-b from-zinc-800 to-zinc-950 p-2 overflow-hidden">
+                            <img src="${previewPath}" class="w-full h-full object-contain drop-shadow-2xl group-hover:scale-110 transition duration-500 transform origin-bottom">
+                        </div>
+                        
+                        <!-- المعلومات والتحميل -->
+                        <div class="p-4 bg-zinc-950 border-t border-zinc-900 flex flex-col gap-2">
+                            <div>
+                                <h4 class="font-bold text-sm text-white truncate">${skin.name}</h4>
+                                <p class="text-[10px] text-zinc-500 line-clamp-1">${skin.description}</p>
+                            </div>
+                            
+                            <!-- زر التحميل -->
+                            <a href="${skinPath}" download="${skin.name}.png" 
+                               class="download-btn w-full block text-center py-2 text-xs font-bold bg-zinc-800 hover:bg-white hover:text-black border border-zinc-700 rounded transition mt-1 uppercase tracking-wider">
+                                Download
+                            </a>
+                        </div>
+                    `;
+
+                    // Logic: جعل الصورة فقط هي من تغير العارض، وزر التحميل للتحميل فقط
+                    card.querySelector('.view-trigger').onclick = () => {
+                        if(viewer) {
+                            viewer.loadSkin(skinPath);
+                            window.scrollTo({ top: 0, behavior: 'smooth' });
+                        }
+                    };
+
+                    // منع زر التحميل من تفعيل العارض (Stop Propagation)
+                    const dlBtn = card.querySelector('.download-btn');
+                    dlBtn.onclick = (e) => e.stopPropagation();
+
+                    grid.appendChild(card);
+                });
+            } catch (err) { console.error(err); }
+        }
+
+        loadGallery();
+    </script>
+</body>
+</html>
